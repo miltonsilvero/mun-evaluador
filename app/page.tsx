@@ -1008,7 +1008,7 @@ export default function MUNApp() {
                 >
                   {CONTEXT_OPTIONS.map((opt) => (
                     <option key={opt} value={opt}>
-                      {opt} (x{CONTEXT_MULTIPLIERS[opt]})
+                      {opt}
                     </option>
                   ))}
                 </select>
