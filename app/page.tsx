@@ -45,6 +45,23 @@ interface Participation {
   day: number;
 }
 
+interface VoteSession {
+  id: string;
+  title: string;
+  type: "simple" | "cualificada";
+  status: "activa" | "cerrada";
+  day: number;
+  created_at: string;
+}
+
+interface VoteRecord {
+  id?: string;
+  session_id: string;
+  delegation_id: string;
+  vote: "favor" | "contra" | "abstencion";
+}
+
+
 const OFFICIAL_DELEGATIONS: Delegation[] = [
   { id: "1", name: "Bahrein", flag: "🇧🇭", zone: "left", display_order: 1 },
   { id: "2", name: "China", flag: "🇨🇳", zone: "left", display_order: 2 },
@@ -109,8 +126,25 @@ export default function MUNApp() {
   const [observation, setObservation] = useState<string>("");
   const [currentDay, setCurrentDay] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<"sala" | "ranking" | "historial">("sala");
+  const [activeTab, setActiveTab] = useState<"sala" | "ranking" | "historial" | "votacion">("sala");
   const [milestoneTitle, setMilestoneTitle] = useState("");
+
+  // Sesión activa y lista de votos de la sesión actual
+  const [activeVoteSession, setActiveVoteSession] = useState<VoteSession | null>(null);
+  const [currentVotes, setCurrentVotes] = useState<Record<string, "favor" | "contra" | "abstencion">>({});
+
+  // Formulario para crear votación
+  const [newVoteTitle, setNewVoteTitle] = useState("");
+  const [newVoteType, setNewVoteType] = useState<"simple" | "cualificada">("simple");
+
+  // Banner de feedback (reemplazo de alert)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [pastSessions, setPastSessions] = useState<any[]>([]);
+
+  const showFeedback = (msg: string) => {
+    setStatusMessage(msg);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
 
   // Edición / Eliminación
   const [editingParticipation, setEditingParticipation] = useState<Participation | null>(null);
@@ -186,6 +220,99 @@ export default function MUNApp() {
       setUser({ username: data.username, role: data.role as any });
     }
   };
+
+  const handleCreateSession = async () => {
+    if (!newVoteTitle.trim()) return;
+
+    const { data, error } = await supabase
+      .from("vote_sessions")
+      .insert([{ title: newVoteTitle, type: newVoteType, day: currentDay, status: "activa" }])
+      .select()
+      .single();
+
+    if (!error && data) {
+      setActiveVoteSession(data);
+      setCurrentVotes({});
+      setNewVoteTitle("");
+      showFeedback("✅ Votación iniciada exitosamente");
+    }
+  };
+
+  const handleQuickVote = async (delegationId: string, voteType: "favor" | "contra" | "abstencion") => {
+    if (!activeVoteSession) return;
+
+    // Actualización optimista en interfaz (para que responda al instante)
+    setCurrentVotes((prev) => ({ ...prev, [delegationId]: voteType }));
+
+    const { error } = await supabase.from("votes").upsert(
+      [
+        {
+          session_id: activeVoteSession.id,
+          delegation_id: delegationId,
+          vote: voteType,
+        },
+      ],
+      { onConflict: "session_id,delegation_id" }
+    );
+
+    if (error) {
+      showFeedback("❌ Error al guardar voto");
+    }
+  };
+
+  const handleCloseSession = async () => {
+    if (!activeVoteSession) return;
+
+    await supabase
+      .from("vote_sessions")
+      .update({ status: "cerrada" })
+      .eq("id", activeVoteSession.id);
+
+    setActiveVoteSession(null);
+    setCurrentVotes({});
+    showFeedback("🔒 Votación finalizada");
+    
+    // Recargamos el historial
+    fetchPastSessions();
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    // Eliminamos la sesión (gracias al 'on delete cascade' de la BBDD, los votos asociados se borran solos)
+    const { error } = await supabase
+      .from("vote_sessions")
+      .delete()
+      .eq("id", sessionId);
+
+    if (!error) {
+      showFeedback("🗑️ Votación eliminada");
+      fetchPastSessions();
+    } else {
+      showFeedback("❌ Error al eliminar votación");
+    }
+  };
+
+  const fetchPastSessions = async () => {
+    // Traemos las sesiones cerradas con sus votos asociados
+    const { data, error } = await supabase
+      .from("vote_sessions")
+      .select(`
+        *,
+        votes (*)
+      `)
+      .eq("status", "cerrada")
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setPastSessions(data);
+    }
+  };
+
+  // Cargar historial al montar el componente o cuando cambie activeTab a 'votacion'
+  useEffect(() => {
+    if (activeTab === "votacion") {
+      fetchPastSessions();
+    }
+  }, [activeTab, activeVoteSession]);
 
   const handleSave = async () => {
     if (!selectedDelegation || !user) return;
@@ -476,6 +603,17 @@ export default function MUNApp() {
               🏆 Ranking & Gráficas
             </button>
           )}
+
+          <button
+            onClick={() => setActiveTab("votacion")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeTab === "votacion"
+                ? "bg-[#a12843] text-white shadow-md shadow-[#a12843]/30"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            🗳️ Votación Rápida
+          </button>
 
           <button
             onClick={() => setActiveTab("historial")}
@@ -900,6 +1038,210 @@ export default function MUNApp() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* VISTA 4: VOTACIÓN RÁPIDA */}
+      {activeTab === "votacion" && (
+        <div className="max-w-4xl mx-auto space-y-4">
+          {/* Banner de Feedback (Sustituto de alert) */}
+          {statusMessage && (
+            <div className="bg-[#a12843]/20 border border-[#a12843] text-white px-4 py-2 rounded-xl text-xs font-bold text-center">
+              {statusMessage}
+            </div>
+          )}
+
+          {/* Panel de Control: Crear o Finalizar Votación */}
+          {!activeVoteSession ? (
+            <div className="bg-[#131926] p-4 rounded-2xl border border-[#1e293b] space-y-3">
+              <h3 className="text-sm font-black text-white">Iniciar Nueva Sesión de Votación</h3>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  placeholder="Título o Moción (ej: Moción de Resolución 1.1)..."
+                  value={newVoteTitle}
+                  onChange={(e) => setNewVoteTitle(e.target.value)}
+                  className="flex-1 bg-[#1b2436] border border-[#2d3a52] rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-[#a12843]"
+                />
+                <select
+                  value={newVoteType}
+                  onChange={(e: any) => setNewVoteType(e.target.value)}
+                  className="bg-[#1b2436] border border-[#2d3a52] rounded-xl p-2.5 text-xs text-white focus:outline-none"
+                >
+                  <option value="simple">Forma</option>
+                  <option value="cualificada">Fondo</option>
+                </select>
+                <button
+                  onClick={handleCreateSession}
+                  className="bg-[#69acaf] hover:bg-[#528f92] text-slate-900 font-bold px-4 py-2.5 rounded-xl text-xs transition-all"
+                >
+                  Abrir Votación
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-[#131926] p-4 rounded-2xl border border-[#69acaf]/40 flex justify-between items-center">
+              <div>
+                <span className="text-[10px] bg-[#69acaf]/20 text-[#69acaf] font-bold px-2 py-0.5 rounded-md border border-[#69acaf]/30 uppercase">
+                  Votación Activa ({activeVoteSession.type})
+                </span>
+                <h2 className="text-base font-black text-white mt-1">{activeVoteSession.title}</h2>
+              </div>
+              <button
+                onClick={handleCloseSession}
+                className="bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 border border-rose-500/30 px-3 py-2 rounded-xl text-xs font-bold transition-all"
+              >
+                🔒 Finalizar Votación
+              </button>
+            </div>
+          )}
+
+          {/* Tarjetas con Botones Rápidos por País */}
+          {activeVoteSession && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {delegations.map((d) => {
+                const currentVote = currentVotes[d.id];
+                return (
+                  <div
+                    key={d.id}
+                    className="bg-[#131926] border border-[#1e293b] rounded-xl p-3 text-center space-y-2 shadow-md"
+                  >
+                    <div className="flex items-center justify-center gap-1.5">
+                      <span className="text-lg">{d.flag}</span>
+                      <span className="text-xs font-bold text-white truncate">{d.name}</span>
+                    </div>
+
+                    {/* Los 3 Botones Rápidos */}
+                    <div className="grid grid-cols-3 gap-1 pt-1">
+                      <button
+                        onClick={() => handleQuickVote(d.id, "favor")}
+                        className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          currentVote === "favor"
+                            ? "bg-[#39fc60] text-slate-950 font-black shadow-md shadow-[#39fc60]/20"
+                            : "bg-[#1b2436] text-emerald-400 hover:bg-[#39fc60]/20"
+                        }`}
+                      >
+                        🟢
+                      </button>
+                      <button
+                        onClick={() => handleQuickVote(d.id, "contra")}
+                        className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          currentVote === "contra"
+                            ? "bg-rose-500 text-white font-black shadow-md shadow-rose-500/20"
+                            : "bg-[#1b2436] text-rose-400 hover:bg-rose-500/20"
+                        }`}
+                      >
+                        🔴
+                      </button>
+                      <button
+                        onClick={() => handleQuickVote(d.id, "abstencion")}
+                        className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          currentVote === "abstencion"
+                            ? "bg-[#d1c54c] text-slate-950 font-black shadow-md shadow-[#d1c54c]/20"
+                            : "bg-[#1b2436] text-yellow-300 hover:bg-[#d1c54c]/20"
+                        }`}
+                      >
+                        ⚪
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* SECCIÓN: HISTORIAL DE VOTACIONES PASADAS */}
+          <div className="mt-8 pt-6 border-t border-[#1e293b] space-y-3">
+            <h3 className="text-sm font-black text-white flex items-center gap-2">
+              <span>📜</span> Historial de Votaciones
+            </h3>
+
+            {pastSessions.length === 0 ? (
+              <p className="text-xs text-slate-500 italic">No hay votaciones registradas todavía.</p>
+            ) : (
+              <div className="space-y-3">
+                {pastSessions.map((session) => {
+                  const votesList: VoteRecord[] = session.votes || [];
+                  const favor = votesList.filter((v) => v.vote === "favor").length;
+                  const contra = votesList.filter((v) => v.vote === "contra").length;
+                  const abstencion = votesList.filter((v) => v.vote === "abstencion").length;
+
+                  return (
+                    <details
+                      key={session.id}
+                      className="group bg-[#131926] border border-[#1e293b] rounded-xl overflow-hidden transition-all"
+                    >
+                      {/* Cabecera / Resumen del Registro */}
+                      <summary className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer select-none hover:bg-[#1b2436]/50 transition-colors">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 group-open:rotate-90 transition-transform">►</span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-white">{session.title}</span>
+                              <span className="text-[10px] bg-[#1b2436] text-slate-400 px-2 py-0.5 rounded border border-[#2d3a52] font-semibold">
+                                {session.type === "simple" ? "Votación de Forma" : "Votación de Fondo"}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-500">Día {session.day}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 self-end sm:self-auto">
+                          {/* Conteo total resumido */}
+                          <div className="flex items-center gap-2.5 bg-[#1b2436] px-3 py-1 rounded-lg border border-[#2d3a52] text-xs font-bold">
+                            <span className="text-emerald-400">🟢 {favor}</span>
+                            <span className="text-rose-400">🔴 {contra}</span>
+                            <span className="text-yellow-300">⚪ {abstencion}</span>
+                          </div>
+
+                          {/* Botón de eliminar solo visible si es Admin */}
+                          {user.role === "admin" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation(); // Evita abrir/cerrar el acordeón al hacer clic
+                                handleDeleteSession(session.id);
+                              }}
+                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg text-xs transition-colors"
+                              title="Eliminar registro"
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
+                      </summary>
+
+                      {/* Detalle Desplegable: Voto individual por país */}
+                      <div className="px-4 pb-4 pt-2 border-t border-[#1e293b] bg-[#0b0f19]/40">
+                        <p className="text-[11px] font-bold text-slate-400 mb-2">Detalle de votación por delegación:</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                          {delegations.map((d) => {
+                            const countryVote = votesList.find((v) => v.delegation_id === d.id)?.vote;
+
+                            return (
+                              <div
+                                key={d.id}
+                                className="bg-[#131926] border border-[#1e293b] p-2 rounded-lg flex items-center justify-between text-xs"
+                              >
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <span>{d.flag}</span>
+                                  <span className="text-[11px] font-medium text-slate-200 truncate">{d.name}</span>
+                                </div>
+
+                                {/* Estado del voto */}
+                                {countryVote === "favor" && <span className="text-emerald-400 font-bold">🟢</span>}
+                                {countryVote === "contra" && <span className="text-rose-400 font-bold">🔴</span>}
+                                {countryVote === "abstencion" && <span className="text-yellow-300 font-bold">⚪</span>}
+                                {!countryVote && <span className="text-slate-600 text-[10px] italic">—</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </details>
+                  );
+                })}
               </div>
             )}
           </div>
