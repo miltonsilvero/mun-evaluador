@@ -515,62 +515,66 @@ export default function MUNApp() {
         </div>
       </div>
 
-      {/* VISTA 1: SALA EN U */}
-      {activeTab === "sala" && (
-        <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="flex flex-col gap-2">
-              {leftZone.map((d) => (
-                <button
-                  key={d.id}
-                  onClick={() => setSelectedDelegation(d)}
-                  className="p-3 bg-[#131926] border border-[#1e293b] rounded-xl hover:border-[#69acaf] hover:bg-[#1b2436] text-left flex items-center justify-between active:scale-95 transition-all shadow-md group"
-                >
-                  <span className="font-bold text-xs sm:text-sm text-slate-200 group-hover:text-white">
-                    {d.name}
-                  </span>
-                  <span className="text-2xl">{d.flag}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-col items-center justify-center border-2 border-dashed border-[#1e293b] rounded-2xl bg-[#131926]/40 p-4 text-center text-slate-400 text-xs font-semibold">
-              <span className="text-slate-300">🏛️ MESA DE PRESIDENCIA</span>
-              <span className="text-[11px] text-[#69acaf] font-bold mt-2 bg-[#69acaf]/10 px-2.5 py-1 rounded-full border border-[#69acaf]/30">
-                Evaluando en Jornada {currentDay}
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              {[...rightZone].reverse().map((d) => (
-                <button
-                  key={d.id}
-                  onClick={() => setSelectedDelegation(d)}
-                  className="p-3 bg-[#131926] border border-[#1e293b] rounded-xl hover:border-[#69acaf] hover:bg-[#1b2436] text-left flex items-center justify-between active:scale-95 transition-all shadow-md group"
-                >
-                  <span className="font-bold text-xs sm:text-sm text-slate-200 group-hover:text-white">
-                    {d.name}
-                  </span>
-                  <span className="text-2xl">{d.flag}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="max-w-md mx-auto grid grid-cols-3 gap-2">
-            {bottomZone.map((d) => (
+     {/* VISTA 1: SALA EN U */}
+    {activeTab === "sala" && (
+      <div className="max-w-4xl mx-auto">
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {/* Columna Izquierda: Ahora muestra las delegaciones del área derecha */}
+          <div className="flex flex-col gap-2">
+            {rightZone.reverse().map((d) => (
               <button
                 key={d.id}
                 onClick={() => setSelectedDelegation(d)}
-                className="p-3 bg-[#131926] border border-[#1e293b] rounded-xl hover:border-[#69acaf] hover:bg-[#1b2436] text-center flex flex-col items-center justify-center active:scale-95 transition-all shadow-md group"
+                className="p-3 bg-[#131926] border border-[#1e293b] rounded-xl hover:border-[#69acaf] hover:bg-[#1b2436] text-left flex items-center justify-between active:scale-95 transition-all shadow-md group"
               >
-                <span className="text-2xl mb-1">{d.flag}</span>
-                <span className="font-bold text-xs text-slate-200 group-hover:text-white">{d.name}</span>
+                <span className="font-bold text-xs sm:text-sm text-slate-200 group-hover:text-white">
+                  {d.name}
+                </span>
+                <span className="text-2xl">{d.flag}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Centro: Mesa de Presidencia */}
+          <div className="flex flex-col items-center justify-center border-2 border-dashed border-[#1e293b] rounded-2xl bg-[#131926]/40 p-4 text-center text-slate-400 text-xs font-semibold">
+            <span className="text-slate-300">🏛️ MESA DE PRESIDENCIA</span>
+            <span className="text-[11px] text-[#69acaf] font-bold mt-2 bg-[#69acaf]/10 px-2.5 py-1 rounded-full border border-[#69acaf]/30">
+              Evaluando en Jornada {currentDay}
+            </span>
+          </div>
+
+          {/* Columna Derecha: Ahora muestra las delegaciones de la izquierda (iniciando con Bahrein) */}
+          <div className="flex flex-col gap-2">
+            {leftZone.map((d) => (
+              <button
+                key={d.id}
+                onClick={() => setSelectedDelegation(d)}
+                className="p-3 bg-[#131926] border border-[#1e293b] rounded-xl hover:border-[#69acaf] hover:bg-[#1b2436] text-left flex items-center justify-between active:scale-95 transition-all shadow-md group"
+              >
+                <span className="font-bold text-xs sm:text-sm text-slate-200 group-hover:text-white">
+                  {d.name}
+                </span>
+                <span className="text-2xl">{d.flag}</span>
               </button>
             ))}
           </div>
         </div>
-      )}
+
+        {/* Fila Inferior: Orden invertido */}
+        <div className="max-w-md mx-auto grid grid-cols-3 gap-2">
+          {[...bottomZone].reverse().map((d) => (
+            <button
+              key={d.id}
+              onClick={() => setSelectedDelegation(d)}
+              className="p-3 bg-[#131926] border border-[#1e293b] rounded-xl hover:border-[#69acaf] hover:bg-[#1b2436] text-center flex flex-col items-center justify-center active:scale-95 transition-all shadow-md group"
+            >
+              <span className="text-2xl mb-1">{d.flag}</span>
+              <span className="font-bold text-xs text-slate-200 group-hover:text-white">{d.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
 
       {/* VISTA 2: RANKING & GRÁFICAS */}
       {activeTab === "ranking" && user.role === "admin" && (
