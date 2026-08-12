@@ -612,7 +612,7 @@ export default function MUNApp() {
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            🗳️ Votación Rápida
+            🗳️ Votación
           </button>
 
           <button
